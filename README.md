@@ -94,10 +94,14 @@ TinkerlandsModsInstaller.exe --catalog "C:\Packages\catalog.json" --list
 ## Публикация модов
 
 Источники выбранных модов находятся в `mods/`, описание каталога —
-`catalog/mods.json`. `tools/package.py` создаёт воспроизводимые `.mod`, ZIP,
+`catalog/mods.json`; поле `source` задаёт основной GML-адаптер мода.
+`tools/package.py` создаёт воспроизводимые `.mod`, ZIP,
 `catalog.json`, EXE и `SHA256SUMS.txt` в `dist/`. В Releases публикуются EXE,
 каталог, ZIP и суммы. Загрузки берутся из последнего обычного релиза этого
 репозитория; произвольные сторонние URL установщик не принимает.
+Шаблон Windows CI — `tools/build-workflow.yml`. Для включения его нужно поместить
+в `.github/workflows/` с GitHub-авторизацией, имеющей право `workflow`;
+в текущем репозитории он не активирован из-за отсутствия этого права.
 
 Для новой DLL добавить в запись мода `native`:
 

@@ -7,6 +7,7 @@
       "version": "0.1.6",
       "description": "Добавляет вкладку «Моды» в главное меню Tinkerlands со списком загруженных модов. Не добавляет предметы и не заменяет сундуки.",
       "adapter": "mod_menu.mod",
+      "source": "src/mod-menu.gml",
       "dependencies": [],
       "game_sha256": ["bfb41cd03ba70b2d2b0c158d346922c4750e6fd3144ff02dc5d6d228b33efb42"]
     }

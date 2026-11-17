@@ -21,9 +21,10 @@ def archive(path, files):
         for name, data in files.items(): assert z.read(name) == data
 
 def package(tag):
+    version = re.search(r'const string Version = "([^"]+)"', (ROOT/'src/Program.cs').read_text(encoding='utf-8'))[1]
+    tag = tag or 'v'+version
     if not re.fullmatch(r'v\d+\.\d+\.\d+', tag): raise ValueError('Use a tag such as v0.1.0')
     out = ROOT/'dist'; out.mkdir(exist_ok=True)
-    version = re.search(r'const string Version = "([^"]+)"', (ROOT/'src/Program.cs').read_text(encoding='utf-8'))[1]
     if tag != 'v'+version: raise ValueError('Tag differs from installer version')
     exe = (ROOT/'build/TinkerlandsModsInstaller.exe').read_bytes()
     (out/'TinkerlandsModsInstaller.exe').write_bytes(exe)
@@ -34,7 +35,9 @@ def package(tag):
         root = ROOT/'mods'/mod['id']; info = json.loads((root/'info.json').read_text(encoding='utf-8'))
         if info['version'] != mod['version']: raise ValueError('Adapter version differs from catalog')
         script = json.loads((root/'script.json').read_text(encoding='utf-8'))
-        code = (root/'src/mod-menu.gml').read_text(encoding='utf-8')
+        source_file = (root/mod.get('source', 'src/main.gml')).resolve()
+        if not source_file.is_relative_to(root.resolve()): raise ValueError('Script source outside mod directory')
+        code = source_file.read_text(encoding='utf-8')
         if '%$%' in code or '#$#' in code: raise ValueError('Reserved encoding marker in source')
         script['code'] = code.replace('"', '%$%').replace(',', '#$#')
         adapter = out/mod['adapter']
@@ -63,5 +66,5 @@ def package(tag):
     print(json.dumps(dict(release=tag, assets=[dict(name=p.name, bytes=p.stat().st_size, sha256=sha(p.read_bytes())) for p in assets]), indent=2))
 
 if __name__ == '__main__':
-    p=argparse.ArgumentParser(description=__doc__); p.add_argument('--tag', default='v0.1.0')
+    p=argparse.ArgumentParser(description=__doc__); p.add_argument('--tag')
     package(p.parse_args().tag)
