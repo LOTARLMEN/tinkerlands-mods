@@ -205,6 +205,18 @@ namespace TinkerlandsMods {
                     SelfUpdate.Confirm(target);
                 }
             });
+            Check("self-update retries after the old EXE rename was locked", () => {
+                using(var f=new Fixture()) {
+                    byte[] next=File.ReadAllBytes(Process.GetCurrentProcess().MainModule.FileName);
+                    string target=Path.Combine(f.Root,"TinkerlandsModsInstaller.exe");File.WriteAllText(target,"old installer");
+                    var release=new InstallerRelease {version=Program.Version,sha256=Hash.Bytes(next)};
+                    using(var locked=new FileStream(target,FileMode.Open,FileAccess.Read,FileShare.Read))
+                        Throws(()=>SelfUpdate.Swap(target,next,release,path=>{}));
+                    Assert(File.ReadAllText(target)=="old installer","Locked installer changed");
+                    SelfUpdate.Swap(target,next,release,path=>{});SelfUpdate.Confirm(target);
+                    Assert(Hash.File(target)==release.sha256,"Update retry failed");
+                }
+            });
             Console.WriteLine("Tests: " + passed + " passed, " + failed + " failed"); return failed == 0 ? 0 : 1;
         }
     }

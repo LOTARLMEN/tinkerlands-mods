@@ -71,7 +71,7 @@ EXE скачивается и проверяется по SHA-256 и встро�
 
 ```powershell
 ./build.ps1
-python tools/package.py --tag v0.1.0
+python tools/package.py
 python tests/e2e.py
 ```
 

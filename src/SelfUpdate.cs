@@ -11,8 +11,20 @@ namespace TinkerlandsMods {
             SafePath.CheckReparse(receipt); SafePath.CheckReparse(previous);
             if (!File.Exists(receipt)) return;
             var state = Json.Read<Receipt>(File.ReadAllText(receipt));
-            if (!Hash.Valid(state.current_hash) || !Hash.Valid(state.previous_hash) || Hash.File(current) != state.current_hash)
+            if (!Hash.Valid(state.current_hash) || !Hash.Valid(state.previous_hash))
                 throw new IOException("Нельзя подтвердить предыдущее самообновление.");
+            string currentHash = Hash.File(current);
+            // A file lock may reject the very first rename. In that case the
+            // old EXE is still intact; discard only our validated pending data.
+            if (currentHash == state.previous_hash && !File.Exists(previous)) {
+                string pending = current + ".next.exe"; SafePath.CheckReparse(pending);
+                if (File.Exists(pending)) {
+                    if (Hash.File(pending) != state.current_hash) throw new IOException("Временный EXE установщика изменён.");
+                    File.Delete(pending);
+                }
+                File.Delete(receipt); return;
+            }
+            if (currentHash != state.current_hash) throw new IOException("Нельзя подтвердить предыдущее самообновление.");
             if (File.Exists(previous)) {
                 if (Hash.File(previous) != state.previous_hash) throw new IOException("Резервная копия установщика изменена.");
                 File.Delete(previous);
