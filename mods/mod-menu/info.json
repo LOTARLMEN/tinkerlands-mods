@@ -1,0 +1,6 @@
+{
+  "name": "mod_menu",
+  "author": "Tinkerlands modding project",
+  "version": "0.1.6",
+  "description": "Окно «Моды» в главном меню: список загруженных модов, версии, авторы и описания."
+}

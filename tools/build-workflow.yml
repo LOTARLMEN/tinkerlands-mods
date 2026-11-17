@@ -1,0 +1,29 @@
+name: Build and test
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build standalone installer
+        shell: pwsh
+        run: ./build.ps1
+      - name: Package
+        run: python tools/package.py
+      - name: Test transactions and release package
+        run: python tests/e2e.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TinkerlandsModsInstaller
+          path: |
+            dist/TinkerlandsModsInstaller.exe
+            dist/catalog.json
+            dist/Tinkerlands-*.zip
+            dist/SHA256SUMS.txt
