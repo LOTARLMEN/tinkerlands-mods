@@ -26,16 +26,24 @@ def mod_file(root, relative):
         raise ValueError('Source outside mod directory: '+relative)
     return path
 
+def validate_tag(tag, installer_version, mods):
+    if tag == 'v' + installer_version:
+        return
+    if any(tag == f'{mod["id"]}-v{mod["version"]}' for mod in mods):
+        return
+    raise ValueError('Use the installer tag or a catalog mod tag with its version')
+
 def package(tag):
     version = re.search(r'const string Version = "([^"]+)"', (ROOT/'src/Program.cs').read_text(encoding='utf-8'))[1]
     tag = tag or 'v'+version
-    if not re.fullmatch(r'v\d+\.\d+\.\d+', tag): raise ValueError('Use a tag such as v0.1.0')
+    if not re.fullmatch(r'(?:[a-z0-9]+(?:-[a-z0-9]+)*-)?v\d+\.\d+\.\d+', tag):
+        raise ValueError('Use a tag such as v0.2.3 or chest-network-v0.0.40')
+    source = json.loads((ROOT/'catalog/mods.json').read_text(encoding='utf-8'))
+    validate_tag(tag, version, source['mods'])
     out = ROOT/'dist'; out.mkdir(exist_ok=True)
-    if tag != 'v'+version: raise ValueError('Tag differs from installer version')
     exe = (ROOT/'build/TinkerlandsModsInstaller.exe').read_bytes()
     (out/'TinkerlandsModsInstaller.exe').write_bytes(exe)
     base = f'https://github.com/LOTARLMEN/tinkerlands-mods/releases/download/{tag}/'
-    source = json.loads((ROOT/'catalog/mods.json').read_text(encoding='utf-8'))
     catalog = dict(schema=1, release=tag, installer=dict(version=version, url=base+'TinkerlandsModsInstaller.exe', sha256=sha(exe)), mods=[])
     for mod in source['mods']:
         root = ROOT/'mods'/mod['id']; info = json.loads((root/'info.json').read_text(encoding='utf-8'))

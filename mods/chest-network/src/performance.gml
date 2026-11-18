@@ -11,7 +11,7 @@ function CN_PerformanceWrite(_kind, _data)
     var _s = CN_PerformanceState();
     if (_s.failed) return;
     _s.sequence++;
-    var _record = { version: "0.0.38", sequence: _s.sequence, event: _kind,
+    var _record = { version: "0.0.40", sequence: _s.sequence, event: _kind,
                     local_datetime_serial: date_current_datetime(), data: _data };
     var _file = file_text_open_append("chest_network_performance.jsonl");
     if (_file < 0) throw "Cannot append performance trace";

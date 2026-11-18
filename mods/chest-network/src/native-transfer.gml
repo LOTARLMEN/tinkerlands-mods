@@ -123,25 +123,43 @@ function CN_DepositInventoryAcrossNetwork(_anchor, _entry)
     if (!CN_ChestStillExists(_anchor) || !CN_NativeCall("container_get_open", [_anchor.container]))
     { _result.reason = "network_unavailable"; return _result; }
     var _nodes = CN_BuildLoadedNetwork(_anchor, REGION);
-    _result.reason = "destination_full_or_restricted";
+    var _source = CN_DLLSlot(_entry.container, _entry.x, _entry.y, _entry.item, _entry.qty, _entry.id, false);
+    var _destinations = [];
     for (var _n = 0; _n < array_length(_nodes); _n++)
+        array_push(_destinations, string(_nodes[_n].container));
+    var _token = CN_DLLCommand({ op: "begin_deposit_route", source: _source, destinations: _destinations });
+    _result.reason = "destination_full_or_restricted";
+    try
     {
-        // Recheck connectivity and identity immediately before each native write.
-        if (!CN_ChestStillExists(_anchor)) { _result.reason = "network_unavailable"; break; }
-        var _live = CN_BuildLoadedNetwork(_anchor, REGION);
-        if (!CN_NetworkHasContainer(_live, _nodes[_n].container)) continue;
-        if (!CN_HostChestWritable(_nodes[_n])) continue;
-        var _current = Container.GetItem(INVENTORY, _entry.x, _entry.y);
-        if (_current != _entry.item || CN_ReadItemQuantity(_current) != _result.remaining ||
-            Item.GetProperty(_current, 0) != _entry.id)
-        { _result.reason = "source_changed"; break; }
-        var _moved = CN_MoveContainerSlot(INVENTORY, _entry.x, _entry.y, _nodes[_n].container,
-                                        _current, _result.remaining, _entry.id);
-        _result.moved += _moved.moved;
-        _result.remaining -= _moved.moved;
-        if (_moved.moved > 0) CN_SyncHostChest(_nodes[_n]);
-        if (_result.remaining <= 0) break;
+        for (var _n = 0; _n < array_length(_nodes); _n++)
+        {
+            // Observe membership and ownership separately from the DLL's route.
+            if (!CN_ChestStillExists(_anchor)) { _result.reason = "network_unavailable"; break; }
+            var _live = CN_BuildLoadedNetwork(_anchor, REGION);
+            var _node = _nodes[_n];
+            var _available = CN_NetworkHasContainer(_live, _node.container) && CN_HostChestWritable(_node);
+            var _slot = _source;
+            if (_available) _slot = CN_DLLObserveSlot(_entry);
+            var _quantity = CN_DLLCommand({ op: "offer_deposit_slot", token: _token,
+                destination: _destinations[_n], available: _available, live: _slot });
+            if (_quantity == -13) { _result.reason = "source_changed"; break; }
+            if (_quantity <= 0) continue;
+            var _moved = CN_MoveContainerSlot(_entry.container, _entry.x, _entry.y, _node.container,
+                                            _entry.item, _quantity, _entry.id);
+            CN_DLLCommand({ op: "record_deposit_move", token: _token, moved: _moved.moved });
+            if (_moved.reason == "source_changed") { _result.reason = "source_changed"; break; }
+            if (_moved.moved > 0) CN_SyncHostChest(_node);
+            if (_moved.moved == _quantity) break;
+        }
+        _result.moved = CN_DLLCommand({ op: "finish_deposit_route", token: _token });
     }
+    catch (_error)
+    {
+        try { CN_DLLCommand({ op: "abort_deposit_route", token: _token }); }
+        catch (_abort_error) { CN_ProbeLog("DEPOSIT ROUTE ABORT: " + string(_abort_error)); }
+        throw _error;
+    }
+    _result.remaining -= _result.moved;
     _result.ok = _result.moved > 0;
     if (_result.remaining <= 0) _result.reason = "";
     return _result;

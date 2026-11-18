@@ -3,6 +3,10 @@
 #![allow(non_snake_case)]
 mod input_trace;
 mod slot_hit;
+mod deposit_route;
+mod coop_trace;
+use coop_trace::{CoopObservation, CoopTrace};
+use deposit_route::DepositRoute;
 use serde::Deserialize;
 use std::{ffi::{c_char,c_void,CStr},ptr,sync::{Mutex,atomic::{AtomicU32,Ordering}}};
 
@@ -85,9 +89,29 @@ enum Command {
         owner: String,
         local: String,
     },
+    BeginDepositRoute { source: Slot, destinations: Vec<String> },
+    OfferDepositSlot {
+        #[serde(deserialize_with="whole")] token: u32,
+        destination: String,
+        #[serde(deserialize_with="binary")] available: bool,
+        live: Slot,
+    },
+    RecordDepositMove {
+        #[serde(deserialize_with="whole")] token: u32,
+        #[serde(deserialize_with="whole")] moved: i64,
+    },
+    FinishDepositRoute { #[serde(deserialize_with="whole")] token: u32 },
+    AbortDepositRoute { #[serde(deserialize_with="whole")] token: u32 },
+    ObserveCoop { sample: CoopObservation },
+    ResetCoopTrace,
     Reset,
 }
-struct Core {serial:u32,captured:Option<(u32,Vec<Slot>)>}
+struct Core {
+    serial: u32,
+    captured: Option<(u32, Vec<Slot>)>,
+    deposit: Option<DepositRoute>,
+    coop_trace: CoopTrace,
+}
 
 // Linked only into the offline test executable, never an exported DLL API.
 #[cfg(feature="test-harness")]
@@ -95,18 +119,30 @@ pub fn replay(text:&str)->Vec<f64> {
     let mut core=Core::new();
     text.lines().map(|line|match serde_json::from_str(line) {
         Ok(c)=>core.execute(c).unwrap_or(-5.0),
-        Err(_)=>{core.captured=None;-4.0},
+        Err(_)=>{core.clear();-4.0},
     }).collect()
 }
 impl Core {
-    const fn new()->Self {Self{serial:0,captured:None}}
+    const fn new()->Self {Self{serial:0,captured:None,deposit:None,coop_trace:CoopTrace::new()}}
+    fn clear(&mut self) {
+        self.captured = None;
+        self.deposit = None;
+        self.coop_trace.reset();
+    }
+    fn next_token(&mut self) -> Result<u32, &'static str> {
+        self.serial = self.serial.checked_add(1).filter(|n| *n <= 0x7fff_ffff).ok_or("token_exhausted")?;
+        Ok(self.serial)
+    }
+    fn deposit(&mut self, token: u32) -> Result<&mut DepositRoute, &'static str> {
+        self.deposit.as_mut().filter(|route| route.matches(token)).ok_or("missing_deposit_route")
+    }
     fn execute(&mut self,c:Command)->Result<f64,&'static str> {
         match c {
             Command::Capture{slots}=>{
                 self.captured=None;
                 if slots.len()>4096 || slots.iter().any(|s|s.qty<0 || s.x<0 || s.y<0) {return Err("invalid_snapshot");}
-                self.serial=self.serial.checked_add(1).filter(|n|*n<=0x7fff_ffff).ok_or("token_exhausted")?;
-                self.captured=Some((self.serial,slots));Ok(self.serial as f64)
+                let token = self.next_token()?;
+                self.captured=Some((token,slots));Ok(token as f64)
             },
             Command::Select{token,hover,live}=>{
                 // Consume before checking: even a rejected or malformed live
@@ -149,7 +185,34 @@ impl Core {
                     && !anchor.is_empty() && selected == anchor;
                 Ok(if allowed { 1.0 } else { 0.0 })
             },
-            Command::Reset=>{self.captured=None;Ok(1.0)},
+            Command::BeginDepositRoute { source, destinations } => {
+                if self.deposit.is_some() { return Err("deposit_route_already_active"); }
+                let token = self.next_token()?;
+                self.deposit = Some(DepositRoute::new(token, source, destinations)?);
+                Ok(token as f64)
+            },
+            Command::OfferDepositSlot { token, destination, available, live } =>
+                self.deposit(token)?.offer(&destination, available, &live),
+            Command::RecordDepositMove { token, moved } => {
+                self.deposit(token)?.record(moved)?;
+                Ok(1.0)
+            },
+            Command::FinishDepositRoute { token } => {
+                let moved = self.deposit(token)?.finish()?;
+                self.deposit = None;
+                Ok(moved as f64)
+            },
+            Command::AbortDepositRoute { token } => {
+                self.deposit(token)?;
+                self.deposit = None;
+                Ok(1.0)
+            },
+            Command::ObserveCoop { sample } => Ok(self.coop_trace.observe(sample)),
+            Command::ResetCoopTrace => {
+                self.coop_trace.reset();
+                Ok(1.0)
+            },
+            Command::Reset=>{self.clear();Ok(1.0)},
         }
     }
 }
@@ -192,7 +255,7 @@ pub unsafe extern "C" fn TCS_Command(text:*const c_char)->f64 {
         let bytes=CStr::from_ptr(text).to_bytes();
         if bytes.len()>2_000_000{return -2.0;}
         let Ok(mut core)=CORE.try_lock() else{return -3.0;};
-        let command=match serde_json::from_slice(bytes){Ok(c)=>c,Err(_)=>{core.captured=None;return -4.0;}};
+        let command=match serde_json::from_slice(bytes){Ok(c)=>c,Err(_)=>{core.clear();return -4.0;}};
         core.execute(command).unwrap_or(-5.0)
     });
     result.unwrap_or(-100.0)

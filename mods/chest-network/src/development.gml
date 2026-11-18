@@ -61,7 +61,7 @@ function CN_DevTick()
         }
         catch (_error) { CN_ProbeLog("WORLD NAME LOOKUP: " + string(_error)); }
         var _ready = {
-            version: "0.0.38", token: _d.token, player: _d.player,
+            version: "0.0.40", token: _d.token, player: _d.player,
             region: _d.region, world_name: _d.world_name,
             x: MY_PLAYER.x, y: MY_PLAYER.y,
             authoritative: CN_NativeCall("net_is_host", [])

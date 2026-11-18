@@ -190,6 +190,7 @@ function CN_ProbeRemainderCases()
     var _source = Container.Create(1, 1);
     var _first = Container.Create(1, 1);
     var _second = Container.Create(1, 1);
+    var _route = undefined;
     try
     {
         for (var _case = 0; _case < 4; _case++)
@@ -205,24 +206,46 @@ function CN_ProbeRemainderCases()
             if (_case == 3) Item.SetData(_first_item, "cn_probe_remainder", "retained");
             var _entries = CN_SnapshotSlots([{ container: _source }]);
             var _before = CN_DLLCaptureSlots(_entries);
-            var _stock = CN_MoveContainerSlot(_source, 0, 0, _first, _item, 7, E_ITEMS.wood);
+            var _initial = _before.captured[0];
+            var _first_key = string(_first);
+            var _second_key = string(_second);
+            _route = CN_DLLCommand({ op: "begin_deposit_route", source: _initial,
+                destinations: [_first_key, _second_key] });
+            var _first_qty_allowed = CN_DLLCommand({ op: "offer_deposit_slot", token: _route,
+                destination: _first_key, available: true, live: _initial });
+            if (_first_qty_allowed != 7) throw "Deposit route rejected a fresh source";
+            var _stock = CN_MoveContainerSlot(_source, 0, 0, _first, _item, _first_qty_allowed, E_ITEMS.wood);
+            CN_DLLCommand({ op: "record_deposit_move", token: _route, moved: _stock.moved });
             var _remainder = CN_NativeInventoryRemainder(_before, _item);
             var _expected = (_case == 1) ? 3 : 7;
             CN_ProbeLog("DLL REMAINDER CASE: " + json_stringify({ case_id: _case, first: _first_qty, source_custom: _case >= 2, destination_custom: _case == 3, stock: _stock, before: _before.captured, live: _before.live, source_now: CN_ContainerQuantity(_source, E_ITEMS.wood), remainder: _remainder }));
             if (is_undefined(_remainder) || _remainder.qty != _expected) throw "Native remainder selection failed";
-            var _routed = CN_MoveContainerSlot(_source, 0, 0, _second, _remainder.item, _remainder.qty, _remainder.id);
+            var _observed = CN_DLLObserveSlot(_remainder);
+            var _next_qty = CN_DLLCommand({ op: "offer_deposit_slot", token: _route,
+                destination: _second_key, available: true, live: _observed });
+            if (_next_qty != _expected) throw "Deposit route lost the remainder";
+            var _routed = CN_MoveContainerSlot(_source, 0, 0, _second, _remainder.item, _next_qty, _remainder.id);
+            CN_DLLCommand({ op: "record_deposit_move", token: _route, moved: _routed.moved });
+            var _route_moved = CN_DLLCommand({ op: "finish_deposit_route", token: _route });
+            _route = undefined;
             var _total = CN_ContainerQuantity(_source, E_ITEMS.wood) + CN_ContainerQuantity(_first, E_ITEMS.wood) + CN_ContainerQuantity(_second, E_ITEMS.wood);
             var _received = Container.GetItem(_second, 0, 0);
-            if (_routed.moved != _expected || _total != _first_qty + 7)
+            if (_routed.moved != _expected || _route_moved != 7 || _total != _first_qty + 7)
                 throw "Native remainder transfer did not preserve quantity/data";
             if (_case >= 2 && Item.GetData(_received, "cn_probe_remainder") != "retained")
                 throw "Native remainder transfer lost custom data";
             CN_ProbeLog("CASE NETWORK REMAINDER: " + json_stringify({ first_before: _first_qty, stock_moved: _stock.moved, routed: _routed.moved, total: _total }));
         }
+        CN_ProbeLog("NATIVE DEPOSIT ROUTE READY: four disposable cases preserved quantity and custom data");
         CN_ProbeLog("NATIVE REMAINDER READY: full/partial disposable destinations preserve totals and custom data");
     }
     catch (_error)
     {
+        if (!is_undefined(_route))
+        {
+            try { CN_DLLCommand({ op: "abort_deposit_route", token: _route }); }
+            catch (_abort_error) { CN_ProbeLog("DEPOSIT ROUTE PROBE ABORT: " + string(_abort_error)); }
+        }
         Container.Destroy(_second, false, 0, 0); Container.Destroy(_first, false, 0, 0); Container.Destroy(_source, false, 0, 0);
         throw _error;
     }
@@ -309,7 +332,7 @@ OnModLoad(function()
     var _file = file_text_open_write("chest_network_probe.log");
     if (_file >= 0)
     {
-        file_text_write_string(_file, "Chest Network compatibility probe 0.0.38");
+        file_text_write_string(_file, "Chest Network compatibility probe 0.0.40");
         file_text_writeln(_file);
         file_text_close(_file);
     }
