@@ -20,6 +20,12 @@ def archive(path, files):
         assert z.testzip() is None and set(z.namelist()) == set(files)
         for name, data in files.items(): assert z.read(name) == data
 
+def mod_file(root, relative):
+    path = (root/relative).resolve()
+    if not path.is_relative_to(root.resolve()):
+        raise ValueError('Source outside mod directory: '+relative)
+    return path
+
 def package(tag):
     version = re.search(r'const string Version = "([^"]+)"', (ROOT/'src/Program.cs').read_text(encoding='utf-8'))[1]
     tag = tag or 'v'+version
@@ -35,15 +41,23 @@ def package(tag):
         root = ROOT/'mods'/mod['id']; info = json.loads((root/'info.json').read_text(encoding='utf-8'))
         if info['version'] != mod['version']: raise ValueError('Adapter version differs from catalog')
         script = json.loads((root/'script.json').read_text(encoding='utf-8'))
-        source_file = (root/mod.get('source', 'src/main.gml')).resolve()
-        if not source_file.is_relative_to(root.resolve()): raise ValueError('Script source outside mod directory')
-        code = source_file.read_text(encoding='utf-8')
+        sources = mod.get('sources', [mod.get('source', 'src/main.gml')])
+        code = '\n\n'.join(mod_file(root, name).read_text(encoding='utf-8') for name in sources)
         if '%$%' in code or '#$#' in code: raise ValueError('Reserved encoding marker in source')
         script['code'] = code.replace('"', '%$%').replace(',', '#$#')
         adapter = out/mod['adapter']
         # Preserve the already released adapter byte-for-byte so a matching
         # manual installation can be adopted without replacing a foreign file.
-        archive(adapter, {'info.json': json_bytes(info).rstrip(b'\n'), f'scripts/{script["key"]}.json': json_bytes(script).rstrip(b'\n')})
+        records = {'info.json': json_bytes(info).rstrip(b'\n'), f'scripts/{script["key"]}.json': json_bytes(script).rstrip(b'\n')}
+        for name in mod.get('records', []):
+            match = re.fullmatch(r'(?:scripts|items|interactables)/(id(\d+)_[A-Za-z0-9_]+)\.json', name)
+            if not match or name in records: raise ValueError('Invalid or duplicate mod record: '+name)
+            data = mod_file(root, 'records/'+name).read_bytes()
+            record = json.loads(data)
+            if record['key'] != match[1] or record['id'] != int(match[2]):
+                raise ValueError('Mod record identity differs from its file name: '+name)
+            records[name] = data
+        archive(adapter, records)
         with zipfile.ZipFile(adapter) as z:
             encoded = json.loads(z.read(f'scripts/{script["key"]}.json'))['code']
             assert encoded.replace('%$%', '"').replace('#$#', ',') == code
@@ -51,8 +65,7 @@ def package(tag):
         for native in mod.get('native', []):
             name = native['name']
             if not re.fullmatch(r'[A-Za-z0-9_-]+\.dll', name): raise ValueError('Bad native DLL name')
-            path = (root/native['source']).resolve()
-            if not path.is_relative_to(root.resolve()): raise ValueError('DLL source outside mod directory')
+            path = mod_file(root, native['source'])
             target = f'mods/native/{mod["id"]}/{name}'
             if target not in code: raise ValueError('Adapter must load the DLL from its managed relative path: '+target)
             files[target] = path.read_bytes()

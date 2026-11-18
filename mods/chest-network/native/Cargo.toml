@@ -1,0 +1,25 @@
+[package]
+name = "tinkerlands-storage"
+version = "0.0.36"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+test-harness = []
+
+[[bin]]
+name = "storage-test-harness"
+path = "src/offline.rs"
+required-features = ["test-harness"]
+
+[dependencies]
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.154"
+
+[profile.release]
+opt-level = 2
+lto = true
+codegen-units = 1
+strip = true

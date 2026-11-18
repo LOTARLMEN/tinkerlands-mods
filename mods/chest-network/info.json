@@ -1,0 +1,6 @@
+{
+  "name": "chest_network_probe",
+  "author": "Chest Network project",
+  "version": "0.0.37",
+  "description": "Объединяет соседние обычные сундуки. Добавляет поиск, фильтры, сортировку и перенос по всей сети."
+}

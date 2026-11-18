@@ -1,0 +1,6 @@
+{
+  "id": 16054,
+  "key": "id16054_cn_terminal_interact",
+  "event": "E_CS_EVENT.OnInteractableInteract",
+  "code": "// Retained legacy hook ID for TEST compatibility. Terminals no longer open storage.\nvar _cn_legacy_unused = true;\n"
+}

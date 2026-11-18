@@ -15,6 +15,10 @@ jobs:
       - name: Build standalone installer
         shell: pwsh
         run: ./build.ps1
+      - name: Build Chest Network native module
+        run: |
+          rustup target add x86_64-pc-windows-gnu
+          python mods/chest-network/native/build.py
       - name: Package
         run: python tools/package.py
       - name: Test transactions and release package

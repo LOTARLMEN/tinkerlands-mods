@@ -10,7 +10,7 @@ using System.Windows.Forms;
 
 namespace TinkerlandsMods {
     static class Program {
-        public const string Version = "0.2.1";
+        public const string Version = "0.2.2";
         public static readonly string UserFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TinkerlandsMods");
         public static string LogPath { get { return Path.Combine(UserFolder, "installer.log"); } }
         public static void Log(string text) {

@@ -17,7 +17,10 @@
 Нужна 64-битная Windows с .NET Framework 4.8. Python, Node, Steam API-ключ
 и вход в GitHub не нужны. EXE не подписан сертификатом.
 
-Сейчас в каталоге доступно **Меню модов 0.1.6**, уже проверенное в игре.
+В каталоге доступны **Меню модов 0.1.6** и **Мультихранилище 0.0.37**.
+Перенос в мультихранилище проверен в одиночной игре, проверка коопа впереди.
+У подключившегося игрока общие слоты пока доступны для просмотра.
+[Описание мультихранилища](mods/chest-network/README.md)
 
 ## Ошибки и предложения
 
@@ -77,6 +80,8 @@ EXE скачивается и проверяется по SHA-256 и встро�
 Системный компилятор C# из .NET Framework, без NuGet и сторонних библиотек:
 
 ```powershell
+rustup target add x86_64-pc-windows-gnu
+python mods/chest-network/native/build.py
 ./build.ps1
 python tools/package.py
 python tests/e2e.py
@@ -101,7 +106,9 @@ TinkerlandsModsInstaller.exe --catalog "C:\Packages\catalog.json" --list
 ## Публикация модов
 
 Источники выбранных модов находятся в `mods/`, описание каталога —
-`catalog/mods.json`; поле `source` задаёт основной GML-адаптер мода.
+`catalog/mods.json`. Поле `source` задаёт один GML-адаптер, `sources` задаёт
+порядок объединения нескольких исходников, а `records` перечисляет дополнительные
+записи мода в его папке `records/`.
 В карточке мода отображаются `description`, необязательное подробное описание `details` и автор из `info.json`.
 `tools/package.py` создаёт воспроизводимые `.mod`, ZIP,
 `catalog.json`, EXE и `SHA256SUMS.txt` в `dist/`. В Releases публикуются EXE,

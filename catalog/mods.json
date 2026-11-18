@@ -11,6 +11,48 @@
       "source": "src/mod-menu.gml",
       "dependencies": [],
       "game_sha256": ["bfb41cd03ba70b2d2b0c158d346922c4750e6fd3144ff02dc5d6d228b33efb42"]
+    },
+    {
+      "id": "chest-network",
+      "title": "Мультихранилище",
+      "version": "0.0.37",
+      "description": "Объединяет соседние обычные сундуки. Добавляет поиск, фильтры, сортировку и перенос по всей сети.",
+      "details": "Поставьте обычные сундуки рядом и откройте любой из них. Поиск, фильтры и сортировка работают по всей связанной группе. Shift+ЛКМ или Shift+ПКМ по предмету в инвентаре переносит его в сеть, включая случай, когда открытый сундук заполнен.\n\nСборка для тестирования. Перенос проверен в одиночной игре. В текущей версии общая выдача у подключившегося игрока доступна для просмотра. Клиентский перенос ещё не реализован. Проверка в коопе впереди.",
+      "adapter": "chest_network_probe.mod",
+      "sources": [
+        "src/performance.gml",
+        "src/network.gml",
+        "src/search.gml",
+        "src/localization.gml",
+        "src/native.gml",
+        "src/dll-transfer.gml",
+        "src/identity.gml",
+        "src/world.gml",
+        "src/chest-access.gml",
+        "src/native-model.gml",
+        "src/native-input.gml",
+        "src/native-transfer.gml",
+        "src/native-overlay.gml",
+        "src/native-window.gml",
+        "src/development.gml",
+        "src/probe.gml",
+        "src/input-trace.gml"
+      ],
+      "records": [
+        "interactables/id16052_cn_terminal.json",
+        "items/id16053_cn_terminal.json",
+        "scripts/id16054_cn_terminal_interact.json"
+      ],
+      "dependencies": [],
+      "game_sha256": [
+        "bfb41cd03ba70b2d2b0c158d346922c4750e6fd3144ff02dc5d6d228b33efb42"
+      ],
+      "native": [
+        {
+          "source": "build/tinkerlands_storage.dll",
+          "name": "tinkerlands_storage.dll"
+        }
+      ]
     }
   ]
 }

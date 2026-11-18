@@ -29,11 +29,18 @@ def main():
         catalog['installer']['url']='TinkerlandsModsInstaller.exe';shutil.copy2(EXE,packages/catalog['installer']['url'])
         path=packages/'catalog.json';path.write_text(json.dumps(catalog,ensure_ascii=False),encoding='utf-8')
         result=json.loads(run('--game',game,'--catalog',path,'--list'))
-        assert result['mods'][0]['id']=='mod-menu' and result['mods'][0]['status']=='Не установлен'
-        run('--game',game,'--catalog',path,'--install','mod-menu')
+        assert [mod['id'] for mod in result['mods']]==[mod['id'] for mod in catalog['mods']]
+        assert all(mod['status']=='Не установлен' for mod in result['mods'])
+        ids=','.join(mod['id'] for mod in catalog['mods'])
+        run('--game',game,'--catalog',path,'--install',ids)
+        for mod in catalog['mods']:
+            for file in mod['files']:
+                assert hashlib.sha256((game/file['path']).read_bytes()).hexdigest()==file['sha256'],file['path']
         assert hashlib.sha256((game/'mods/mod_menu.mod').read_bytes()).hexdigest()=='32fb7ff8e04180f989dd52e8cf3f6742b7ad2b63a80e880e190487e8cd031261'
-        run('--game',game,'--remove','mod-menu') # no catalog or network needed
-        assert not (game/'mods/mod_menu.mod').exists()
+        run('--game',game,'--remove',ids) # no catalog or network needed
+        for mod in catalog['mods']:
+            for file in mod['files']:
+                assert not (game/file['path']).exists(),file['path']
         for name,digest in baseline.items():assert hashlib.sha256((game/name).read_bytes()).hexdigest()==digest,name
         print('PASS release package -> CLI install -> offline removal; EXE/data/saves unchanged')
 
