@@ -9,8 +9,9 @@ namespace TinkerlandsMods {
         public readonly bool InCatalog;
         public readonly string State;
         public bool HasUpdate { get { return State == Installer.UpdateAvailable; } }
+        public bool CanRemove { get { return Installed != null || State == Installer.ManualInstall; } }
 
-        readonly CheckBox check = new CheckBox();
+        readonly CheckBox check = new GameCheckBox();
         readonly GameButton title;
         readonly GameButton update = new GameButton("Обновить");
         readonly Label version;
@@ -43,8 +44,7 @@ namespace TinkerlandsMods {
             badge.Visible = update.Visible = HasUpdate;
             activity.Visible = meter.Visible = false;
             check.Text = ""; check.AccessibleName = "Отметить мод «" + mod.title + "»";
-            check.FlatStyle = FlatStyle.Flat; check.FlatAppearance.CheckedBackColor = Theme.Gold;
-            check.ForeColor = Theme.Paper; check.BackColor = Color.Transparent; check.Cursor = Cursors.Hand;
+            check.BackColor = Theme.Panel;
             update.AccessibleName = "Обновить «" + mod.title + "»";
             Controls.AddRange(new Control[] { check, title, version, badge, update, activity, meter });
 
@@ -73,7 +73,7 @@ namespace TinkerlandsMods {
 
         public void SetSelected(bool value) {
             selected = value;
-            title.BackColor = selected ? Theme.Raised : Theme.Panel;
+            check.BackColor = title.BackColor = selected ? Theme.Raised : Theme.Panel;
             Invalidate(true);
         }
 
@@ -108,8 +108,8 @@ namespace TinkerlandsMods {
             base.OnLayout(levent);
             if (title == null) return;
             int trailing = HasUpdate ? 150 : 12;
-            check.SetBounds(14, 15, 23, 24);
-            title.SetBounds(36, 11, Math.Max(0, Width - 36 - trailing), 31);
+            check.SetBounds(11, 13, 28, 28);
+            title.SetBounds(40, 11, Math.Max(0, Width - 40 - trailing), 31);
             version.SetBounds(43, 43, Math.Max(0, Width - 43 - trailing), 24);
             badge.SetBounds(Width - 134, 11, 120, 23);
             update.SetBounds(Width - 134, 37, 119, 31);

@@ -23,6 +23,12 @@ namespace TinkerlandsMods {
         internal const string Installed = "Установлен";
         internal const string ManualInstall = "Установлен вручную";
         internal const string UpdateAvailable = "Есть обновление";
+        const string LegacyStorageDll = "tinkerlands_storage.dll";
+        const string LegacyStorageDllHash = "f2b0fb63ccd4bba39c24475582601190df2ce5638259819dad07b21d791752e0";
+        static readonly PayloadFile[] LegacyStorageFiles = {
+            new PayloadFile { path = "mods/chest_network_probe.mod", sha256 = "335d4343355b2e595b6fa31adc404fe459b36538232d37a3430a1a6a32bd6681" },
+            new PayloadFile { path = LegacyStorageDll, sha256 = LegacyStorageDllHash }
+        };
         public readonly string Root;
         readonly Func<bool> running;
         public Action<string> BeforeWrite; // Internal fault injection used only by the test executable mode.
@@ -64,8 +70,25 @@ namespace TinkerlandsMods {
                 if (installed.files.Any(f => !File.Exists(SafePath.Inside(Root, f.path)) || Hash.File(SafePath.Inside(Root, f.path)) != f.sha256)) return "Изменён / повреждён";
                 return Versions.Parse(installed.version) < Versions.Parse(mod.version) ? UpdateAvailable : Installed;
             }
-            if (mod.files.Any(f => File.Exists(SafePath.Inside(Root, f.path)))) return ManualInstall;
+            if (FindManualFiles(mod, state) != null) return ManualInstall;
+            if (mod.files.Any(f => File.Exists(SafePath.Inside(Root, f.path)))) return "Файлы отличаются от каталога";
             return "Не установлен";
+        }
+
+        IEnumerable<PayloadFile> FindManualFiles(Mod mod, InstalledState state) {
+            if (mod.files.Any(f => f.path.EndsWith(".mod", StringComparison.OrdinalIgnoreCase)) &&
+                MatchesManualFiles(mod.files, state)) return mod.files;
+            // This release of Chest Network used a different adapter and a DLL beside the game EXE.
+            return mod.id == "chest-network" && MatchesManualFiles(LegacyStorageFiles, state) ? LegacyStorageFiles : null;
+        }
+
+        bool MatchesManualFiles(IEnumerable<PayloadFile> files, InstalledState state) {
+            foreach (var file in files) {
+                if (state.mods.Any(m => m.files.Any(f => String.Equals(f.path, file.path, StringComparison.OrdinalIgnoreCase)))) return false;
+                string path = SafePath.Inside(Root, file.path);
+                if (!File.Exists(path) || Hash.File(path) != file.sha256) return false;
+            }
+            return true;
         }
 
         internal string InstalledAuthor(InstalledMod installed) {
@@ -143,8 +166,21 @@ namespace TinkerlandsMods {
                     if (progress != null) progress(new ModProgress(id, stage, percent));
                 };
                 foreach (string id in affected) report(id, ModStage.Queued, null);
-                foreach (string id in remove) if (!old.mods.Any(m => m.id == id)) throw new InvalidDataException("Этот мод не находится под управлением установщика: " + id);
                 var changes = new Dictionary<string,byte[]>(StringComparer.OrdinalIgnoreCase);
+                var manualRemovals = new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
+                foreach (string id in remove.Where(id => !old.mods.Any(m => m.id == id))) {
+                    var mod = source.catalog.mods.FirstOrDefault(m => m.id == id);
+                    var files = mod == null ? null : FindManualFiles(mod, old);
+                    if (files == null) throw new InvalidDataException("Не удалось сверить файлы для удаления: " + (mod == null ? id : mod.title));
+                    foreach (var file in files) {
+                        manualRemovals.Add(file.path, file.sha256);
+                        changes.Add(file.path, null);
+                    }
+                }
+                foreach (var mod in source.catalog.mods.Where(m => !remove.Contains(m.id) && m.dependencies.Any(remove.Contains))) {
+                    if (!old.mods.Any(m => m.id == mod.id) && FindManualFiles(mod, old) != null)
+                        throw new IOException("Удаление оставляет мод без зависимости: " + mod.title);
+                }
                 foreach (string id in remove.Concat(install)) {
                     var previous = old.mods.FirstOrDefault(m => m.id == id);
                     if (previous == null) continue;
@@ -172,6 +208,7 @@ namespace TinkerlandsMods {
                     var files = Unpack(mod, bytes);
                     foreach (var f in mod.files) {
                         string target = SafePath.Inside(Root, f.path);
+                        if (manualRemovals.ContainsKey(f.path)) throw new IOException("Файл уже выбран для удаления: " + f.path);
                         bool owned = old.mods.Any(m => m.id == id && m.files.Any(p => String.Equals(p.path, f.path, StringComparison.OrdinalIgnoreCase)));
                         if (old.mods.Any(m => m.id != id && m.files.Any(p => String.Equals(p.path, f.path, StringComparison.OrdinalIgnoreCase)))) throw new IOException("Файл принадлежит другому установленному моду: " + f.path);
                         if (File.Exists(target) && !owned && Hash.File(target) != f.sha256) throw new IOException("В папке уже есть другой файл: " + f.path);
@@ -185,7 +222,7 @@ namespace TinkerlandsMods {
                     if (m.dependencies == null || m.dependencies.Any(d => !next.mods.Any(n => n.id == d))) throw new IOException("Удаление оставляет мод без зависимости: " + m.id);
                 }
                 if (changes.Count == 0) return;
-                CheckScriptCollisions(changes);
+                if (install.Count != 0) CheckScriptCollisions(changes);
                 cancel.ThrowIfCancellationRequested(); Stopped();
                 foreach (string id in affected) report(id, ModStage.Applying, null);
                 string tx = Guid.NewGuid().ToString("N"), txRoot = SafePath.Inside(Root, ".tinkerlands-mods/transactions/" + tx);
@@ -194,8 +231,17 @@ namespace TinkerlandsMods {
                 foreach (var change in changes) {
                     string path = SafePath.Inside(Root, change.Key); bool exists = File.Exists(path);
                     string backup = "undo/" + journal.files.Count + ".bin";
-                    if (exists) { string dest = SafePath.Inside(txRoot, backup); Directory.CreateDirectory(Path.GetDirectoryName(dest)); File.Copy(path, dest); }
-                    journal.files.Add(new UndoFile { path = change.Key, existed = exists, old_hash = exists ? Hash.File(path) : null,
+                    string oldHash = null;
+                    if (exists) {
+                        string dest = SafePath.Inside(txRoot, backup);
+                        Directory.CreateDirectory(Path.GetDirectoryName(dest));
+                        File.Copy(path, dest);
+                        oldHash = Hash.File(dest);
+                    }
+                    string expected;
+                    if (manualRemovals.TryGetValue(change.Key, out expected) && oldHash != expected)
+                        throw new IOException("Файл изменился перед удалением: " + change.Key);
+                    journal.files.Add(new UndoFile { path = change.Key, existed = exists, old_hash = oldHash,
                         new_hash = change.Value == null ? null : Hash.Bytes(change.Value), backup = backup });
                 }
                 string journalPath = SafePath.Inside(txRoot, "journal.json"); Text(journalPath, Json.Write(journal));
@@ -203,6 +249,9 @@ namespace TinkerlandsMods {
                     foreach (var change in changes) {
                         Stopped(); string target = SafePath.Inside(Root, change.Key);
                         if (BeforeWrite != null) BeforeWrite(change.Key);
+                        string expected;
+                        if (manualRemovals.TryGetValue(change.Key, out expected) && (!File.Exists(target) || Hash.File(target) != expected))
+                            throw new IOException("Файл изменился перед удалением: " + change.Key);
                         if (change.Value == null) File.Delete(target); else Atomic(target, change.Value);
                     }
                     Stopped(); Text(StatePath, Json.Write(next)); journal.phase = "committed"; Text(journalPath, Json.Write(journal));
@@ -267,7 +316,9 @@ namespace TinkerlandsMods {
             // Validate the entire undo before changing any files.
             foreach (var f in journal.files) {
                 SafePath.Relative(f.path);
-                if (!f.path.StartsWith("mods/", StringComparison.Ordinal)) throw new InvalidDataException("Неверный путь восстановления.");
+                bool legacyStorage = String.Equals(f.path, LegacyStorageDll, StringComparison.OrdinalIgnoreCase) &&
+                    f.existed && f.old_hash == LegacyStorageDllHash && f.new_hash == null;
+                if (!legacyStorage && !f.path.StartsWith("mods/", StringComparison.Ordinal)) throw new InvalidDataException("Неверный путь восстановления.");
                 string target = SafePath.Inside(Root, f.path);
                 if (File.Exists(target)) {
                     string current = Hash.File(target);

@@ -76,6 +76,20 @@ namespace TinkerlandsMods {
                     }
                 }
             });
+            Check("checkbox draws a large dark check on gold and clears it when unchecked", () => {
+                using (var check = new GameCheckBox { Size = new Size(28, 28), BackColor = Theme.Raised })
+                using (var bitmap = new Bitmap(check.Width, check.Height)) {
+                    check.Checked = true;
+                    check.DrawToBitmap(bitmap, check.ClientRectangle);
+                    Assert(bitmap.GetPixel(5, 5).ToArgb() == Theme.Gold.ToArgb() &&
+                        bitmap.GetPixel(11, 16).ToArgb() == Theme.Shadow.ToArgb(), "Check mark lacks contrast");
+                    check.Checked = false;
+                    check.DrawToBitmap(bitmap, check.ClientRectangle);
+                    Assert(bitmap.GetPixel(5, 5).ToArgb() == Theme.Muted.ToArgb() &&
+                        bitmap.GetPixel(13, 13).ToArgb() == Theme.Shadow.ToArgb() &&
+                        bitmap.GetPixel(0, 0).ToArgb() == Theme.Raised.ToArgb(), "Unchecked box left stale pixels");
+                }
+            });
             Check("install-update-remove / native DLL directory / immutable game files", () => {
                 using (var f = new Fixture()) {
                     string gameHash = Hash.File(f.PathOf("tinkerlands.exe")); var v1 = f.Package("sample", "1.0.0", "one", true); f.Apply(f.Source(v1), "sample", null);
@@ -115,9 +129,40 @@ namespace TinkerlandsMods {
             Check("foreign and changed files are preserved", () => {
                 using (var f = new Fixture()) {
                     var mod = f.Package("sample", "1.0.0", "one", false); Directory.CreateDirectory(f.PathOf("mods")); File.WriteAllText(f.PathOf("mods/sample.mod"), "foreign");
-                    Throws(() => f.Apply(f.Source(mod), "sample", null)); Assert(File.ReadAllText(f.PathOf("mods/sample.mod")) == "foreign", "Foreign file changed");
+                    Throws(() => f.Apply(f.Source(mod), "sample", null));
+                    Throws(() => f.Apply(f.Source(mod), null, "sample"));
+                    Assert(File.ReadAllText(f.PathOf("mods/sample.mod")) == "foreign", "Foreign file changed");
                     File.Delete(f.PathOf("mods/sample.mod")); f.Apply(f.Source(mod), "sample", null); File.WriteAllText(f.PathOf("mods/sample.mod"), "modified");
                     Throws(() => f.Apply(f.Source(mod), "sample", null)); Throws(() => f.Apply(f.Source(), null, "sample")); Assert(File.ReadAllText(f.PathOf("mods/sample.mod")) == "modified", "Modified file changed");
+                }
+            });
+            Check("manual package removal verifies all files and rolls back partial deletion", () => {
+                using (var f = new Fixture()) {
+                    var mod = f.Package("sample", "1.0.0", "one", true);
+                    var source = f.Source(mod);
+                    var files = Installer.Unpack(mod, File.ReadAllBytes(Path.Combine(f.Packages, mod.url)));
+                    foreach (var file in files) {
+                        string target = f.PathOf(file.Key);
+                        Directory.CreateDirectory(Path.GetDirectoryName(target));
+                        File.WriteAllBytes(target, file.Value);
+                    }
+                    string adapter = f.PathOf("mods/sample.mod");
+                    string library = f.PathOf("mods/native/sample/runtime.dll");
+                    string settings = f.PathOf("mods/native/sample/settings.ini");
+                    File.WriteAllText(settings, "keep");
+                    var manager = f.Manager();
+                    Assert(manager.Status(mod, manager.ReadState()) == Installer.ManualInstall, "Manual package not recognized");
+                    File.WriteAllText(library, "modified");
+                    Throws(() => f.Apply(source, null, mod.id));
+                    Assert(File.Exists(adapter) && File.ReadAllText(library) == "modified", "Modified manual package was removed");
+                    File.WriteAllBytes(library, files["mods/native/sample/runtime.dll"]);
+                    int writes = 0;
+                    manager.BeforeWrite = path => { if (++writes == 2) throw new IOException("Test failure"); };
+                    Throws(() => manager.Apply(source, new string[0], new[] { mod.id }, null, CancellationToken.None));
+                    Assert(writes == 2 && mod.files.All(file => Hash.File(f.PathOf(file.path)) == file.sha256), "Undo failed for manual package");
+                    f.Apply(source, null, mod.id);
+                    Assert(!File.Exists(adapter) && !File.Exists(library) && File.ReadAllText(settings) == "keep" &&
+                        manager.ReadState().mods.Count == 0, "Manual removal affected the wrong files or state");
                 }
             });
             Check("transaction failure restores both files and state", () => {

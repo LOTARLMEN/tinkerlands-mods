@@ -33,6 +33,7 @@ namespace TinkerlandsMods {
         public MainForm(string game, string catalog, string screenshotPath) {
             catalogPath = catalog; screenshot = screenshotPath;
             Text = "Tinkerlands Mods · " + Program.Version;
+            Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath);
             BackColor = Theme.Background; ForeColor = Theme.Text; Font = Theme.Body;
             Size = new Size(1090, 736); MinimumSize = new Size(910, 580);
             StartPosition = FormStartPosition.CenterScreen; DoubleBuffered = true;
@@ -182,7 +183,7 @@ namespace TinkerlandsMods {
             bool ready = !busy && source != null && !String.IsNullOrWhiteSpace(pathBox.Text);
             browse.Enabled = refresh.Enabled = selfUpdate.Enabled = !busy;
             apply.Enabled = ready && marked.Length > 0 && marked.All(row => row.InCatalog);
-            remove.Enabled = ready && marked.Length > 0 && marked.All(row => row.Installed != null);
+            remove.Enabled = ready && marked.Length > 0 && marked.All(row => row.CanRemove);
             updateAll.Visible = rows.Values.Any(row => row.HasUpdate);
             updateAll.Enabled = ready && updateAll.Visible;
             foreach (var row in rows.Values) row.SetBusy(busy || !ready);

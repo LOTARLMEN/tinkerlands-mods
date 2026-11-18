@@ -18,19 +18,19 @@ function CN_RefreshLanguage()
     if (_s.signature == _signature) return false;
     _s.signature = _signature;
     _s.types = {};
-    var _labels = ["All", "Search", "Slots", "A–Z", "Network", "View"];
-    if (_language == "Язык") _labels = ["Все", "Поиск", "Слоты", "А–Я", "Сеть", "Просмотр"];
-    else if (_language == "Sprache") _labels = ["Alle", "Suchen", "Plätze", "A–Z", "Netz", "Ansicht"];
-    else if (_language == "Langue") _labels = ["Tous", "Recherche", "Cases", "A–Z", "Réseau", "Lecture"];
-    else if (_language == "Idioma" && _etc == "Etc.") _labels = ["Todos", "Buscar", "Espaços", "A–Z", "Rede", "Ver"];
-    else if (_language == "Idioma") _labels = ["Todos", "Buscar", "Casillas", "A–Z", "Red", "Ver"];
-    else if (_language == "语言") _labels = ["全部", "搜索", "格位", "名称", "网络", "查看"];
-    else if (_language == "語言") _labels = ["全部", "搜尋", "欄位", "名稱", "網路", "檢視"];
-    else if (_language == "言語") _labels = ["すべて", "検索", "スロット", "名前順", "接続", "閲覧"];
-    else if (_language == "언어") _labels = ["전체", "검색", "슬롯", "이름순", "연결", "보기"];
+    var _labels = ["All", "Search", "Slots", "A–Z", "Network", "View", "Chest"];
+    if (_language == "Язык") _labels = ["Все", "Поиск", "Слоты", "А–Я", "Сеть", "Просмотр", "Сундук"];
+    else if (_language == "Sprache") _labels = ["Alle", "Suchen", "Plätze", "A–Z", "Netz", "Ansicht", "Truhe"];
+    else if (_language == "Langue") _labels = ["Tous", "Recherche", "Cases", "A–Z", "Réseau", "Lecture", "Coffre"];
+    else if (_language == "Idioma" && _etc == "Etc.") _labels = ["Todos", "Buscar", "Espaços", "A–Z", "Rede", "Ver", "Baú"];
+    else if (_language == "Idioma") _labels = ["Todos", "Buscar", "Casillas", "A–Z", "Red", "Ver", "Cofre"];
+    else if (_language == "语言") _labels = ["全部", "搜索", "格位", "名称", "网络", "查看", "箱子"];
+    else if (_language == "語言") _labels = ["全部", "搜尋", "欄位", "名稱", "網路", "檢視", "箱子"];
+    else if (_language == "言語") _labels = ["すべて", "検索", "スロット", "名前順", "接続", "閲覧", "チェスト"];
+    else if (_language == "언어") _labels = ["전체", "검색", "슬롯", "이름순", "연결", "보기", "상자"];
     // `all` is a built-in numeric constant in GML, not a legal bare field key.
     _s.labels = { label_all: _labels[0], label_search: _labels[1], label_source: _labels[2],
-                  label_name: _labels[3], label_network: _labels[4], label_view: _labels[5] };
+                  label_name: _labels[3], label_network: _labels[4], label_view: _labels[5], label_anchor: _labels[6] };
     CN_ProbeLog("NATIVE LANGUAGE: " + _signature);
     return true;
 }

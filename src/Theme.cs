@@ -111,6 +111,37 @@ namespace TinkerlandsMods {
         }
     }
 
+    internal sealed class GameCheckBox : CheckBox {
+        public GameCheckBox() {
+            FlatStyle = FlatStyle.Flat;
+            Cursor = Cursors.Hand;
+            DoubleBuffered = true;
+        }
+
+        protected override void OnPaint(PaintEventArgs e) {
+            Theme.Fill(e.Graphics, BackColor, ClientRectangle);
+            int size = Math.Min(20, Math.Min(ClientSize.Width - 6, ClientSize.Height - 6));
+            if (size < 12) return;
+            var box = new Rectangle((ClientSize.Width - size) / 2, (ClientSize.Height - size) / 2, size, size);
+            Color edge = Enabled ? (Checked ? Theme.Gold : Theme.Muted) : Theme.Border;
+            Theme.Fill(e.Graphics, edge, box);
+            if (Checked) {
+                using (var pen = new Pen(Theme.Shadow, 2.5f)) {
+                    pen.StartCap = pen.EndCap = LineCap.Square;
+                    e.Graphics.DrawLines(pen, new[] {
+                        new Point(box.Left + size / 4, box.Top + size / 2),
+                        new Point(box.Left + size * 2 / 5, box.Top + size * 7 / 10),
+                        new Point(box.Left + size * 3 / 4, box.Top + size * 3 / 10)
+                    });
+                }
+            } else {
+                box.Inflate(-2, -2);
+                Theme.Fill(e.Graphics, Theme.Shadow, box);
+            }
+            if (Focused && ShowFocusCues) ControlPaint.DrawFocusRectangle(e.Graphics, Rectangle.Inflate(ClientRectangle, -1, -1));
+        }
+    }
+
     internal sealed class GameButton : Button {
         readonly bool primary;
         readonly bool quiet;

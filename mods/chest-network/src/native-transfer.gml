@@ -18,6 +18,26 @@ function CN_NativeContainerWritable(_nodes, _container)
     return false;
 }
 
+// Route only an ordinary stock click on the locally opened and assigned chest.
+function CN_ClientAnchorInputAllowed(_host, _anchor, _container)
+{
+    if (!variable_global_exists("__NET_MY_ID") ||
+        !variable_instance_exists(_anchor.instance, "persistentData")) return false;
+    var _pd = variable_instance_get(_anchor.instance, "persistentData");
+    if (!is_struct(_pd) || !variable_struct_exists(_pd, "open") ||
+        !variable_struct_exists(_pd, "netID")) return false;
+    var _connected = CN_NativeCall("net_is_connected", []);
+    var _stock_open = CN_NativeCall("container_get_open", [_anchor.container]);
+    var _local = variable_global_get("__NET_MY_ID");
+    var _status = CN_DLLCommand({
+        op: "client_slot", host: _host == true, connected: _connected == true,
+        stock_open: _stock_open == true, server_open: _pd.open == true,
+        anchor: string(_anchor.container), selected: string(_container),
+        owner: string(_pd.netID), local: string(_local)
+    });
+    return _status == 1;
+}
+
 function CN_SyncHostChest(_node)
 {
     if (!CN_NativeCall("net_is_connected", [])) return;

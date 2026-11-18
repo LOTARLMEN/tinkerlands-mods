@@ -424,26 +424,41 @@ function CN_NativeDrawGrid(_s, _mx, _my, _click, _left_replay, _host, _live_node
             continue;
         }
         CN_RestoreNativeInput(_input);
-        if (_left_replay) variable_global_set("__K_MENU_LEFT_CLICK_PRESSED", true);
+        var _native_click = variable_global_get("__K_MENU_LEFT_CLICK_PRESSED") ||
+            variable_global_get("__K_MENU_RIGHT_CLICK_PRESSED");
+        if (_host && _left_replay) variable_global_set("__K_MENU_LEFT_CLICK_PRESSED", true);
         var _writable = false;
         if (_host && !_s.focused) _writable = CN_NativeContainerWritable(_live_nodes, _entry.container);
+        else if (!_host && _native_click && !_s.focused && !_s.scroll_drag && !keyboard_check(vk_shift))
+            _writable = CN_ClientAnchorInputAllowed(_host, _s.anchor, _entry.container);
         var _before_item = _entry.item;
         var _before_qty = _entry.qty;
         if (!_writable) CN_MaskNativeActions();
         CN_RenderPhysicalSlot(_entry, _cx, _cy, _stylesheet);
-        if (_writable && _click &&
+        if (_host && _writable && _click &&
             (Container.GetItem(_entry.container, _entry.x, _entry.y) != _before_item || CN_ReadItemQuantity(_before_item) != _before_qty))
         {
             for (var _node_i = 0; _node_i < array_length(_live_nodes); _node_i++)
                 if (_live_nodes[_node_i].container == _entry.container) CN_SyncHostChest(_live_nodes[_node_i]);
         }
-        if (_click && !_host)
+        if (_native_click && !_host && _writable)
         {
-            _s.notice = "Перенос клиента ещё не подключён";
+            var _after = Container.GetItem(_entry.container, _entry.x, _entry.y);
+            var _after_qty = CN_ReadItemQuantity(_after);
+            CN_ProbeLog("CLIENT STOCK SLOT: anchor=" + _s.anchor.uid + "; x=" + string(_entry.x) +
+                "; y=" + string(_entry.y) + "; before=" + string(_before_qty) + "; after=" + string(_after_qty));
+        }
+        else if (_click && !_host)
+        {
+            if (_entry.container != _s.anchor.container) _s.notice = "Соседний сундук: просмотр";
+            else if (!_native_click || keyboard_check(vk_shift)) _s.notice = "Используйте обычный клик";
+            else _s.notice = "Сундук пока недоступен";
             _s.notice_tick = _s.tick + 180;
             if (!_s.client_block_logged)
             {
-                CN_ProbeLog("CLIENT TRANSFER BLOCKED: native view is host-only; anchor=" + _s.anchor.uid);
+                CN_ProbeLog("CLIENT STOCK SLOT BLOCKED: anchor=" + _s.anchor.uid +
+                    "; selected_anchor=" + string(_entry.container == _s.anchor.container) +
+                    "; native_click=" + string(_native_click));
                 _s.client_block_logged = true;
             }
         }
@@ -490,7 +505,7 @@ function CN_NativeDrawControls(_s, _l, _host, _interactive)
     }
     var _capacity = CN_NetworkCapacity(_s.nodes);
     var _summary = CN_UIText("network") + ": " + string(array_length(_s.nodes));
-    if (!_host) _summary += "   " + CN_UIText("view");
+    if (!_host) _summary += "   " + CN_UIText("anchor");
     var _summary_scale = _scale * 0.65;
     GUI.DrawText(118 * _scale, _l.footer.y + 7 * _scale, _summary, 5, c_white, 1, _summary_scale);
     var _occupied_text = string(_s.occupied) + "/" + string(_capacity);

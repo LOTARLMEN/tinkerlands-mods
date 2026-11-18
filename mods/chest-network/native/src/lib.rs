@@ -75,6 +75,16 @@ enum Command {
         #[serde(deserialize_with="whole")] occupied: u32,
         #[serde(deserialize_with="whole")] available: u32,
     },
+    ClientSlot {
+        #[serde(deserialize_with="binary")] host: bool,
+        #[serde(deserialize_with="binary")] connected: bool,
+        #[serde(deserialize_with="binary")] stock_open: bool,
+        #[serde(deserialize_with="binary")] server_open: bool,
+        anchor: String,
+        selected: String,
+        owner: String,
+        local: String,
+    },
     Reset,
 }
 struct Core {serial:u32,captured:Option<(u32,Vec<Slot>)>}
@@ -132,6 +142,13 @@ impl Core {
                 let padding = if occupied < 30 { 30 - occupied } else { 5 - occupied % 5 };
                 Ok(f64::from(available.min(padding)))
             },
+            Command::ClientSlot { host, connected, stock_open, server_open, anchor, selected, owner, local } => {
+                // The game owns the open lease and performs and synchronizes the transfer.
+                let owns_chest = local.parse::<u64>().ok().is_some_and(|id| owner.parse::<u64>() == Ok(id));
+                let allowed = !host && connected && stock_open && server_open && owns_chest
+                    && !anchor.is_empty() && selected == anchor;
+                Ok(if allowed { 1.0 } else { 0.0 })
+            },
             Command::Reset=>{self.captured=None;Ok(1.0)},
         }
     }
@@ -184,6 +201,27 @@ pub unsafe extern "C" fn TCS_Command(text:*const c_char)->f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn only_the_native_open_client_chest_accepts_input() {
+        let mut request = serde_json::json!({
+            "op":"client_slot", "host":0.0, "connected":1.0, "stock_open":true, "server_open":1.0,
+            "anchor":"chest-a", "selected":"chest-a", "owner":"2", "local":"2"
+        });
+        let check = |row: &serde_json::Value| {
+            Core::new().execute(serde_json::from_value(row.clone()).unwrap()).unwrap()
+        };
+        assert_eq!(check(&request), 1.0);
+        for (key, bad) in [
+            ("host", serde_json::json!(true)), ("connected", serde_json::json!(false)),
+            ("stock_open", serde_json::json!(false)), ("server_open", serde_json::json!(false)),
+            ("selected", serde_json::json!("chest-b")), ("owner", serde_json::json!("1")),
+            ("local", serde_json::json!("-1")),
+        ] {
+            let old = std::mem::replace(&mut request[key], bad);
+            assert_eq!(check(&request), 0.0, "{key}");
+            request[key] = old;
+        }
+    }
     #[test] fn process_name_is_portable_but_exact(){
         assert!(game_filename("D:\\SteamLibrary\\Tinkerlands\\tinkerlands.exe"));
         assert!(game_filename("E:/Games/Tinkerlands/TINKERLANDS.EXE"));

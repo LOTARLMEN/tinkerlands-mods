@@ -10,7 +10,7 @@ using System.Windows.Forms;
 
 namespace TinkerlandsMods {
     static class Program {
-        public const string Version = "0.2.2";
+        public const string Version = "0.2.3";
         public static readonly string UserFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TinkerlandsMods");
         public static string LogPath { get { return Path.Combine(UserFolder, "installer.log"); } }
         public static void Log(string text) {
@@ -49,11 +49,16 @@ namespace TinkerlandsMods {
                 if (cli) {
                     var manager = new Installer(root);
                     if (options.ContainsKey("--recover")) { manager.Recover(); Console.WriteLine("Восстановление завершено."); return 0; }
-                    var source = options.ContainsKey("--remove") && !options.ContainsKey("--install") ?
+                    string[] install = options.ContainsKey("--install") ? options["--install"].Split(',') : new string[0];
+                    string[] remove = options.ContainsKey("--remove") ? options["--remove"].Split(',') : new string[0];
+                    bool managedRemoval = false;
+                    if (remove.Length > 0 && install.Length == 0 && catalogPath == null) {
+                        var installed = manager.ReadState();
+                        managedRemoval = remove.All(id => installed.mods.Any(mod => mod.id == id));
+                    }
+                    var source = managedRemoval ?
                         new CatalogResult { catalog = new Catalog { schema = 1, release = "offline" } } : GetCatalog(catalogPath, null, CancellationToken.None);
-                    if (options.ContainsKey("--install") || options.ContainsKey("--remove")) {
-                        string[] install = options.ContainsKey("--install") ? options["--install"].Split(',') : new string[0];
-                        string[] remove = options.ContainsKey("--remove") ? options["--remove"].Split(',') : new string[0];
+                    if (install.Length > 0 || remove.Length > 0) {
                         manager.Apply(source, install, remove, null, CancellationToken.None);
                     }
                     var state = manager.ReadState();
