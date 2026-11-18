@@ -1,11 +1,14 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Drawing;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 using System.Threading;
+using System.Windows.Forms;
 
 namespace TinkerlandsMods {
     static class Tests {
@@ -59,6 +62,20 @@ namespace TinkerlandsMods {
             }
         }
         public static int Run() {
+            Check("quiet buttons erase pixels left in the paint buffer", () => {
+                using (var button = new GameButton("Открыть", quiet: true) { Size = new Size(128, 32) })
+                using (var bitmap = new Bitmap(button.Width, button.Height))
+                using (var graphics = Graphics.FromImage(bitmap)) {
+                    var paint = typeof(GameButton).GetMethod("OnPaint", BindingFlags.Instance | BindingFlags.NonPublic);
+                    foreach (var background in new[] { Theme.Panel, Theme.Raised }) {
+                        button.BackColor = background;
+                        graphics.Clear(Color.Magenta);
+                        using (var frame = new PaintEventArgs(graphics, button.ClientRectangle)) paint.Invoke(button, new object[] { frame });
+                        Assert(bitmap.GetPixel(0, 0).ToArgb() == background.ToArgb() &&
+                            bitmap.GetPixel(bitmap.Width - 1, bitmap.Height - 1).ToArgb() == background.ToArgb(), "Quiet button left stale pixels");
+                    }
+                }
+            });
             Check("install-update-remove / native DLL directory / immutable game files", () => {
                 using (var f = new Fixture()) {
                     string gameHash = Hash.File(f.PathOf("tinkerlands.exe")); var v1 = f.Package("sample", "1.0.0", "one", true); f.Apply(f.Source(v1), "sample", null);
@@ -75,6 +92,25 @@ namespace TinkerlandsMods {
             });
             Check("checksum mismatch writes no payload", () => {
                 using (var f = new Fixture()) { var mod = f.Package("sample", "1.0.0", "one", false); mod.sha256 = new string('0', 64); Throws(() => f.Apply(f.Source(mod), "sample", null)); Assert(!File.Exists(f.PathOf("mods/sample.mod")), "Payload was written"); }
+            });
+            Check("batch progress includes dependencies and confirms only committed changes", () => {
+                using (var f = new Fixture()) {
+                    var first = f.Package("sample", "1.0.0", "one", false);
+                    var helper = f.Package("helper", "1.0.0", "two", false);
+                    first.dependencies = new[] { helper.id };
+                    var manager = f.Manager(); var events = new List<ModProgress>();
+                    manager.BeforeWrite = path => { if (path == "mods/sample.mod") throw new IOException("injected write failure"); };
+                    Action run = () => manager.Apply(f.Source(first, helper), new[] { first.id }, new string[0], events.Add, CancellationToken.None);
+                    Throws(run);
+                    Assert(events.Select(item => item.Id).Distinct().Count() == 2 && events.All(item => item.Stage != ModStage.Complete), "Failed batch reported success or missed a dependency");
+                    Assert(manager.ReadState().mods.Count == 0 && !File.Exists(f.PathOf("mods/helper.mod")), "Failed batch left a mod installed");
+                    events.Clear(); manager.BeforeWrite = null; run();
+                    var expected = new[] { ModStage.Queued, ModStage.Downloading, ModStage.Checking, ModStage.Ready, ModStage.Applying, ModStage.Complete };
+                    foreach (string id in new[] { first.id, helper.id }) {
+                        Assert(events.Where(item => item.Id == id).Select(item => item.Stage).SequenceEqual(expected), "Unexpected stages for " + id);
+                    }
+                    Assert(events.Take(2).All(item => item.Stage == ModStage.Queued) && manager.ReadState().mods.Count == 2, "Batch queue or final state is incomplete");
+                }
             });
             Check("foreign and changed files are preserved", () => {
                 using (var f = new Fixture()) {
@@ -188,7 +224,9 @@ namespace TinkerlandsMods {
                     bool started = false; SelfUpdate.Swap(target,next,release,path => {started = Hash.File(path) == release.sha256;}); Assert(started,"New EXE not started");
                     SelfUpdate.Confirm(target); Assert(!File.Exists(target + ".previous.exe"), "Confirmed backup not cleaned");
                     SelfUpdate.Swap(target,next,release,path => {started = true;}); SelfUpdate.Confirm(target);
-                    Assert(SelfUpdate.Available(new InstallerRelease {version="0.2.0"}), "Update not offered");
+                    var current = Versions.Parse(Program.Version);
+                    string newer = new Version(current.Major, current.Minor, current.Build + 1).ToString();
+                    Assert(SelfUpdate.Available(new InstallerRelease {version=newer}), "Update not offered");
                     Assert(!SelfUpdate.Available(new InstallerRelease {version=Program.Version}), "Same version offered");
                 }
             });

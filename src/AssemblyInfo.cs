@@ -4,5 +4,5 @@ using System.Reflection;
 [assembly: AssemblyProduct("Tinkerlands Mods Installer")]
 [assembly: AssemblyCompany("LOTARLMEN")]
 [assembly: AssemblyCopyright("Copyright © 2026 LOTARLMEN")]
-[assembly: AssemblyVersion("0.1.1.0")]
-[assembly: AssemblyFileVersion("0.1.1.0")]
+[assembly: AssemblyVersion("0.2.1.0")]
+[assembly: AssemblyFileVersion("0.2.1.0")]

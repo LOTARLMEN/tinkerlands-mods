@@ -9,7 +9,7 @@ using System.Web.Script.Serialization;
 namespace TinkerlandsMods {
     public class PayloadFile { public string path; public string sha256; }
     public class Mod {
-        public string id, title, version, description, url, sha256;
+        public string id, title, version, description, author, details, url, sha256;
         public string[] dependencies = new string[0];
         public string[] game_sha256 = new string[0];
         public List<PayloadFile> files = new List<PayloadFile>();

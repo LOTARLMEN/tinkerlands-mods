@@ -1,6 +1,6 @@
 """Verify the published .NET image can be renamed and replaced while mapped.
 
-Runs the public 0.1.0 updater implementation via reflection in a disposable
+Runs the public 0.1.1 updater implementation via reflection in a disposable
 PowerShell process, targeting only a downloaded EXE in a generated temp folder.
 The game and the developer's installer EXE are never replacement targets.
 """
@@ -17,7 +17,7 @@ param([string]$OldExe,[string]$NewExe)
 $ErrorActionPreference='Stop'
 $assembly=[Reflection.Assembly]::LoadFile($OldExe)
 $release=[Activator]::CreateInstance($assembly.GetType('TinkerlandsMods.InstallerRelease'))
-$release.version='0.1.1'
+$release.version=([version][Diagnostics.FileVersionInfo]::GetVersionInfo($NewExe).FileVersion).ToString(3)
 $sha=[Security.Cryptography.SHA256]::Create()
 $release.sha256=([BitConverter]::ToString($sha.ComputeHash([IO.File]::ReadAllBytes($NewExe)))).Replace('-','').ToLowerInvariant()
 $start=[Action[string]]{
@@ -31,19 +31,19 @@ $start=[Action[string]]{
     $process=[Diagnostics.Process]::Start($settings)
     $output=$process.StandardOutput.ReadToEnd()
     $process.WaitForExit()
-    if ($process.ExitCode -ne 0 -or $output.Trim() -ne '0.1.1') {throw 'Updated installer did not execute'}
+    if ($process.ExitCode -ne 0 -or $output.Trim() -ne $release.version) {throw 'Updated installer did not execute'}
 }
 $method=$assembly.GetType('TinkerlandsMods.SelfUpdate').GetMethod('Swap')
 $arguments=[object[]]@($OldExe,[IO.File]::ReadAllBytes($NewExe),$release,$start)
 $method.Invoke($null,$arguments)
 if (-not (Test-Path -LiteralPath ($OldExe+'.previous.exe'))) {throw 'Old mapped EXE was not retained'}
-Write-Output 'PASS published 0.1.0 mapped assembly -> replace -> execute 0.1.1'
+Write-Output "PASS published 0.1.1 mapped assembly -> replace -> execute $($release.version)"
 '''
 
 def main():
-    request=urllib.request.Request('https://github.com/LOTARLMEN/tinkerlands-mods/releases/download/v0.1.0/TinkerlandsModsInstaller.exe',headers={'User-Agent':'TinkerlandsInstallerUpdateTest'})
+    request=urllib.request.Request('https://github.com/LOTARLMEN/tinkerlands-mods/releases/download/v0.1.1/TinkerlandsModsInstaller.exe',headers={'User-Agent':'TinkerlandsInstallerUpdateTest'})
     old=urllib.request.urlopen(request,timeout=30).read()
-    assert hashlib.sha256(old).hexdigest()=='1755380f50f59f240685784500d490e541e67f421af47c050fd9957ccf746f73'
+    assert hashlib.sha256(old).hexdigest()=='9351b78a2d4427ea342dddfff88997edc4b074c61b5643d984ea82bb9ad43df3'
     with tempfile.TemporaryDirectory(prefix='TinkerlandsMappedUpdate-') as temporary:
         directory=Path(temporary);target=directory/'TinkerlandsModsInstaller.exe';target.write_bytes(old)
         script=directory/'test.ps1';script.write_text(SCRIPT,encoding='ascii')

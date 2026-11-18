@@ -58,6 +58,8 @@ def package(tag):
             files[target] = path.read_bytes()
         name = f'Tinkerlands-{mod["id"]}-{mod["version"]}.zip'; archive(out/name, files)
         entry = {key:mod[key] for key in ['id', 'title', 'version', 'description', 'dependencies', 'game_sha256']}
+        if info.get('author'): entry['author'] = info['author']
+        if mod.get('details'): entry['details'] = mod['details']
         entry.update(url=base+name, sha256=sha((out/name).read_bytes()), files=[dict(path=n, sha256=sha(b)) for n,b in files.items()])
         catalog['mods'].append(entry)
     (out/'catalog.json').write_bytes(json_bytes(catalog))

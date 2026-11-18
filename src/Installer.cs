@@ -7,7 +7,22 @@ using System.Text;
 using System.Threading;
 
 namespace TinkerlandsMods {
+    public enum ModStage { Queued, Downloading, Checking, Ready, Applying, Complete }
+
+    public sealed class ModProgress {
+        public readonly string Id;
+        public readonly ModStage Stage;
+        public readonly int? Percent;
+
+        public ModProgress(string id, ModStage stage, int? percent = null) {
+            Id = id; Stage = stage; Percent = percent;
+        }
+    }
+
     public sealed class Installer {
+        internal const string Installed = "Установлен";
+        internal const string ManualInstall = "Установлен вручную";
+        internal const string UpdateAvailable = "Есть обновление";
         public readonly string Root;
         readonly Func<bool> running;
         public Action<string> BeforeWrite; // Internal fault injection used only by the test executable mode.
@@ -47,10 +62,36 @@ namespace TinkerlandsMods {
             var installed = state.mods.FirstOrDefault(m => m.id == mod.id);
             if (installed != null) {
                 if (installed.files.Any(f => !File.Exists(SafePath.Inside(Root, f.path)) || Hash.File(SafePath.Inside(Root, f.path)) != f.sha256)) return "Изменён / повреждён";
-                return Versions.Parse(installed.version) < Versions.Parse(mod.version) ? "Есть обновление" : "Установлен";
+                return Versions.Parse(installed.version) < Versions.Parse(mod.version) ? UpdateAvailable : Installed;
             }
-            if (mod.files.Any(f => File.Exists(SafePath.Inside(Root, f.path)))) return "Установлен вручную";
+            if (mod.files.Any(f => File.Exists(SafePath.Inside(Root, f.path)))) return ManualInstall;
             return "Не установлен";
+        }
+
+        internal string InstalledAuthor(InstalledMod installed) {
+            var adapter = installed.files.FirstOrDefault(file => file.path.EndsWith(".mod", StringComparison.OrdinalIgnoreCase));
+            if (adapter == null) return null;
+            try {
+                string path = SafePath.Inside(Root, adapter.path);
+                using (var stream = File.OpenRead(path)) {
+                    if (stream.Length > 32 * 1024 * 1024) return null;
+                    using (var mod = new ZipArchive(stream, ZipArchiveMode.Read)) {
+                        var info = mod.GetEntry("info.json");
+                        if (info == null || info.Length > 65536) return null;
+                        using (var reader = new StreamReader(info.Open(), Encoding.UTF8)) {
+                            var buffer = new char[65537];
+                            int length = reader.ReadBlock(buffer, 0, buffer.Length);
+                            if (length == buffer.Length) return null;
+                            var metadata = Json.Read<Mod>(new string(buffer, 0, length));
+                            return metadata == null ? null : metadata.author;
+                        }
+                    }
+                }
+            } catch (IOException) { return null; }
+            catch (InvalidDataException) { return null; }
+            catch (UnauthorizedAccessException) { return null; }
+            catch (ArgumentException) { return null; }
+            catch (InvalidOperationException) { return null; }
         }
         public static Dictionary<string,byte[]> Unpack(Mod mod, byte[] bytes) {
             Downloads.Verify(bytes, mod.sha256);
@@ -82,7 +123,7 @@ namespace TinkerlandsMods {
             if (expected.Count != found.Count) throw new InvalidDataException("В архиве отсутствуют файлы.");
             return found;
         }
-        public void Apply(CatalogResult source, IEnumerable<string> installIds, IEnumerable<string> removeIds, Action<string,int> progress, CancellationToken cancel) {
+        public void Apply(CatalogResult source, IEnumerable<string> installIds, IEnumerable<string> removeIds, Action<ModProgress> progress, CancellationToken cancel) {
             Downloads.Validate(source.catalog);
             using (Lock()) {
                 RecoverLocked(); var old = ReadState();
@@ -97,6 +138,11 @@ namespace TinkerlandsMods {
                     foreach (string d in mod.dependencies) { if (remove.Contains(d)) throw new InvalidDataException("Нельзя удалить необходимую зависимость: " + d); install.Add(d); dependency(d, new HashSet<string>(chain)); }
                 };
                 foreach (string id in install.ToArray()) dependency(id, new HashSet<string>());
+                var affected = install.Concat(remove).OrderBy(id => id, StringComparer.Ordinal).ToArray();
+                Action<string,ModStage,int?> report = (id, stage, percent) => {
+                    if (progress != null) progress(new ModProgress(id, stage, percent));
+                };
+                foreach (string id in affected) report(id, ModStage.Queued, null);
                 foreach (string id in remove) if (!old.mods.Any(m => m.id == id)) throw new InvalidDataException("Этот мод не находится под управлением установщика: " + id);
                 var changes = new Dictionary<string,byte[]>(StringComparer.OrdinalIgnoreCase);
                 foreach (string id in remove.Concat(install)) {
@@ -109,13 +155,20 @@ namespace TinkerlandsMods {
                     }
                     next.mods.RemoveAll(m => m.id == id);
                 }
-                foreach (string id in install.OrderBy(v => v)) {
+                foreach (string id in install.OrderBy(v => v, StringComparer.Ordinal)) {
                     cancel.ThrowIfCancellationRequested(); var mod = source.catalog.mods.Single(m => m.id == id);
                     if (mod.game_sha256.Length != 0 && !mod.game_sha256.Contains(Hash.File(SafePath.Inside(Root, "tinkerlands.exe"))))
                         throw new IOException("Мод «" + mod.title + "» не поддерживает эту версию игры.");
-                    if (progress != null) progress("Загрузка: " + mod.title, 0);
+                    int? lastPercent = null;
+                    report(id, ModStage.Downloading, lastPercent);
                     var bytes = Downloads.Read(mod.url, source.local_root, 128 * 1024 * 1024,
-                        (done,total) => { if (progress != null) progress("Загрузка: " + mod.title, total > 0 ? (int)(done * 100 / total) : 0); }, cancel);
+                        (done, total) => {
+                            int? percent = total > 0 ? (int?)(done * 100 / total) : null;
+                            if (percent == lastPercent) return;
+                            lastPercent = percent;
+                            report(id, ModStage.Downloading, percent);
+                        }, cancel);
+                    report(id, ModStage.Checking, 100);
                     var files = Unpack(mod, bytes);
                     foreach (var f in mod.files) {
                         string target = SafePath.Inside(Root, f.path);
@@ -126,6 +179,7 @@ namespace TinkerlandsMods {
                         changes[f.path] = files[f.path];
                     }
                     next.mods.Add(new InstalledMod { id = id, version = mod.version, files = mod.files, dependencies = mod.dependencies });
+                    report(id, ModStage.Ready, 100);
                 }
                 foreach (var m in next.mods) {
                     if (m.dependencies == null || m.dependencies.Any(d => !next.mods.Any(n => n.id == d))) throw new IOException("Удаление оставляет мод без зависимости: " + m.id);
@@ -133,6 +187,7 @@ namespace TinkerlandsMods {
                 if (changes.Count == 0) return;
                 CheckScriptCollisions(changes);
                 cancel.ThrowIfCancellationRequested(); Stopped();
+                foreach (string id in affected) report(id, ModStage.Applying, null);
                 string tx = Guid.NewGuid().ToString("N"), txRoot = SafePath.Inside(Root, ".tinkerlands-mods/transactions/" + tx);
                 Directory.CreateDirectory(txRoot);
                 var journal = new Journal { state_before = File.Exists(StatePath) ? File.ReadAllText(StatePath) : null };
@@ -145,18 +200,17 @@ namespace TinkerlandsMods {
                 }
                 string journalPath = SafePath.Inside(txRoot, "journal.json"); Text(journalPath, Json.Write(journal));
                 try {
-                    int n = 0;
                     foreach (var change in changes) {
                         Stopped(); string target = SafePath.Inside(Root, change.Key);
                         if (BeforeWrite != null) BeforeWrite(change.Key);
                         if (change.Value == null) File.Delete(target); else Atomic(target, change.Value);
-                        if (progress != null) progress("Применение изменений", ++n * 100 / changes.Count);
                     }
                     Stopped(); Text(StatePath, Json.Write(next)); journal.phase = "committed"; Text(journalPath, Json.Write(journal));
                 } catch {
                     if (!running()) Rollback(txRoot, journal); // Otherwise keep the durable journal until the game is closed.
                     throw;
                 }
+                foreach (string id in affected) report(id, ModStage.Complete, 100);
                 // Keep undo data outside mods. Unknown files and user settings are never swept.
                 PruneEmptyDirectories(changes.Keys);
             }
