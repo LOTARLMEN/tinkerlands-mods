@@ -1,5 +1,5 @@
 // Physical source addresses only: this is a view, never a second container.
-function CN_SnapshotSlots(_nodes)
+function CN_SnapshotSlots(_nodes, _name_keys = true)
 {
     var _result = [];
     var _seen = {};
@@ -7,9 +7,11 @@ function CN_SnapshotSlots(_nodes)
     {
         var _c = _nodes[_n].container;
         if (!Container.Exists(_c)) continue;
-        for (var _y = 0; _y < Container.GetHeight(_c); _y++)
+        var _width = Container.GetWidth(_c);
+        var _height = Container.GetHeight(_c);
+        for (var _y = 0; _y < _height; _y++)
         {
-            for (var _x = 0; _x < Container.GetWidth(_c); _x++)
+            for (var _x = 0; _x < _width; _x++)
             {
                 var _item = Container.GetItem(_c, _x, _y);
                 var _qty = CN_ReadItemQuantity(_item);
@@ -23,7 +25,7 @@ function CN_SnapshotSlots(_nodes)
                     _entry.name = Item.GetProperty(_item, 2);
                     _entry.type = Item.GetProperty(_item, 7);
                     _entry.id = Item.GetProperty(_item, 0);
-                    _entry.sort_key = CN_NameSortKey(_entry.name);
+                    if (_name_keys) _entry.sort_key = CN_NameSortKey(_entry.name);
                     // Native container_item_favorite toggles runtime key115.
                     _entry.favorite = ds_map_exists(_item, 115) && Item.GetProperty(_item, 115) == true;
                 }

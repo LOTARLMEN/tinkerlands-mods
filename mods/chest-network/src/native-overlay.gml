@@ -146,7 +146,7 @@ function CN_NativeRefreshView()
         _s.nodes = CN_BuildLoadedNetwork(_s.anchor, REGION);
         _s.network_dirty = false;
     }
-    _s.sources = CN_SnapshotSlots(_s.nodes);
+    _s.sources = CN_SnapshotSlots(_s.nodes, _s.sort == "name");
     CN_RefreshLanguage();
     _s.occupied = CN_NativeOccupiedCount(_s.sources);
     var _types = [""];
@@ -372,7 +372,7 @@ function CN_NativeViewDraw()
     var _host = CN_NativeCall("net_is_host", []);
     var _stylesheet = CN_NativeCall("container_get_stylesheet", [_s.anchor.container]);
     var _live_nodes = _s.nodes;
-    if (_click && _input_in_grid) _live_nodes = CN_BuildLoadedNetwork(_s.anchor, REGION);
+    if (_host && _click && _input_in_grid) _live_nodes = CN_BuildLoadedNetwork(_s.anchor, REGION);
     var _mx = MOUSE_WINDOW_X;
     var _my = MOUSE_WINDOW_Y;
     // Stock drawing for all unhovered cells shares one reversible input mask.
@@ -416,7 +416,7 @@ function CN_NativeDrawGrid(_s, _mx, _my, _click, _left_replay, _host, _live_node
             if (!is_undefined(_live_entry)) _entry = _live_entry;
         }
         var _current = CN_NativeEntryMatches(_entry);
-        if (_hover && _click) _current = _current && CN_NetworkHasContainer(_live_nodes, _entry.container);
+        if (_host && _hover && _click) _current = _current && CN_NetworkHasContainer(_live_nodes, _entry.container);
         if (!_current) { _s.dirty = true; continue; }
         if (!_hover)
         {
@@ -424,13 +424,24 @@ function CN_NativeDrawGrid(_s, _mx, _my, _click, _left_replay, _host, _live_node
             continue;
         }
         CN_RestoreNativeInput(_input);
-        var _native_click = variable_global_get("__K_MENU_LEFT_CLICK_PRESSED") ||
-            variable_global_get("__K_MENU_RIGHT_CLICK_PRESSED");
+        var _native_left = variable_global_get("__K_MENU_LEFT_CLICK_PRESSED");
+        var _native_right = variable_global_get("__K_MENU_RIGHT_CLICK_PRESSED");
+        var _native_click = _native_left || _native_right;
+        var _client_shift = !_host && _native_click && keyboard_check(vk_shift);
         if (_host && _left_replay) variable_global_set("__K_MENU_LEFT_CLICK_PRESSED", true);
         var _writable = false;
         if (_host && !_s.focused) _writable = CN_NativeContainerWritable(_live_nodes, _entry.container);
-        else if (!_host && _native_click && !_s.focused && !_s.scroll_drag && !keyboard_check(vk_shift))
+        else if (!_host && _native_click && !_s.focused && !_s.scroll_drag &&
+                 (!_client_shift || (_native_left && !_native_right)))
             _writable = CN_ClientAnchorInputAllowed(_host, _s.anchor, _entry.container);
+        if (_client_shift && _writable)
+        {
+            CN_MaskNativeActions();
+            CN_ClientQuickMove(_s, _entry, false);
+            CN_RenderPhysicalSlot(_entry, _cx, _cy, _stylesheet);
+            CN_MaskNativeInput();
+            continue;
+        }
         var _before_item = _entry.item;
         var _before_qty = _entry.qty;
         if (!_writable) CN_MaskNativeActions();
@@ -451,7 +462,7 @@ function CN_NativeDrawGrid(_s, _mx, _my, _click, _left_replay, _host, _live_node
         else if (_click && !_host)
         {
             if (_entry.container != _s.anchor.container) _s.notice = "Соседний сундук: просмотр";
-            else if (!_native_click || keyboard_check(vk_shift)) _s.notice = "Используйте обычный клик";
+            else if (!_native_click || (_client_shift && _native_right)) _s.notice = "Используйте ЛКМ или Shift+ЛКМ";
             else _s.notice = "Сундук пока недоступен";
             _s.notice_tick = _s.tick + 180;
             if (!_s.client_block_logged)
@@ -462,7 +473,7 @@ function CN_NativeDrawGrid(_s, _mx, _my, _click, _left_replay, _host, _live_node
                 _s.client_block_logged = true;
             }
         }
-        if (_click) _s.dirty = true;
+        if (_click && (_host || _writable)) _s.dirty = true;
         CN_MaskNativeInput();
     }
 }
@@ -500,6 +511,7 @@ function CN_NativeDrawControls(_s, _l, _host, _interactive)
     if (_interactive && _sort_clicked)
     {
         _s.sort = (_s.sort == "source") ? "name" : "source";
+        if (_s.sort == "name") _s.dirty = true;
         _s.order_log_pending = true;
         _s.view_dirty = true; _s.page = 0;
     }

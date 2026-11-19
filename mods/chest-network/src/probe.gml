@@ -332,7 +332,7 @@ OnModLoad(function()
     var _file = file_text_open_write("chest_network_probe.log");
     if (_file >= 0)
     {
-        file_text_write_string(_file, "Chest Network compatibility probe 0.0.40");
+        file_text_write_string(_file, "Chest Network compatibility probe 0.0.42");
         file_text_writeln(_file);
         file_text_close(_file);
     }

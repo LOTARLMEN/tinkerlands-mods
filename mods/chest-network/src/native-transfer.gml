@@ -18,7 +18,7 @@ function CN_NativeContainerWritable(_nodes, _container)
     return false;
 }
 
-// Route only an ordinary stock click on the locally opened and assigned chest.
+// Route client input only to the locally opened and assigned chest.
 function CN_ClientAnchorInputAllowed(_host, _anchor, _container)
 {
     if (!variable_global_exists("__NET_MY_ID") ||
@@ -36,6 +36,29 @@ function CN_ClientAnchorInputAllowed(_host, _anchor, _container)
         owner: string(_pd.netID), local: string(_local)
     });
     return _status == 1;
+}
+
+function CN_ClientQuickMove(_s, _entry, _deposit)
+{
+    var _anchor = _s.anchor;
+    var _chest = _deposit ? _anchor.container : _entry.container;
+    if (!CN_ChestStillExists(_anchor) || !CN_ClientAnchorInputAllowed(false, _anchor, _chest)) return;
+    if (_deposit && _entry.container != INVENTORY) return;
+    var _picked = CN_NativeCall("container_get_global_picked_item", []);
+    if (CN_ReadItemQuantity(_picked) > 0 || _entry.qty <= 0 || !CN_NativeEntryMatches(_entry)) return;
+    if (ds_map_exists(_entry.item, 115) && Item.GetProperty(_entry.item, 115) == true) return;
+
+    var _destination = _deposit ? _anchor.container : INVENTORY;
+    var _started = get_timer();
+    var _result = CN_MoveContainerSlot(_entry.container, _entry.x, _entry.y, _destination,
+                                      _entry.item, _entry.qty, _entry.id);
+    var _elapsed = get_timer() - _started;
+    // The game syncs the assigned chest through the same path as a stock click.
+    CN_ProbeLog("CLIENT QUICK MOVE: deposit=" + string(_deposit) + "; move_us=" + string(_elapsed) + "; result=" + json_stringify(_result));
+    if (_result.moved > 0) _s.notice = "Синхронизация при закрытии сундука";
+    else _s.notice = _deposit ? "Нет места в открытом сундуке" : "Нет места в инвентаре";
+    _s.notice_tick = _s.tick + 180;
+    if (_result.moved > 0) _s.dirty = true;
 }
 
 function CN_SyncHostChest(_node)
@@ -58,12 +81,15 @@ function CN_NativeBeginDeposit()
     if (_s.focused || _s.scroll_drag || !is_undefined(_s.pending_deposit) || !keyboard_check(vk_shift)) return;
     var _left = variable_global_get("__K_MENU_LEFT_CLICK_PRESSED") || variable_global_get("__K_INVENTORY_PICKUP_ITEM_PRESSED");
     var _right = variable_global_get("__K_MENU_RIGHT_CLICK_PRESSED") || variable_global_get("__K_INVENTORY_DROP_ITEM_PRESSED");
-    if ((!_left && !_right) || !CN_NativeCall("net_is_host", [])) return;
+    if (!_left && !_right) return;
+    var _client = !CN_NativeCall("net_is_host", []);
+    if (_client && (!_left || _right || !CN_ClientAnchorInputAllowed(false, _s.anchor, _s.anchor.container))) return;
     var _picked = CN_NativeCall("container_get_global_picked_item", []);
     if (CN_ReadItemQuantity(_picked) > 0) return;
-    var _entries = CN_SnapshotSlots([{ container: INVENTORY }]);
+    var _entries = CN_SnapshotSlots([{ container: INVENTORY }], false);
     var _snapshot = CN_DLLCaptureSlots(_entries);
     if (!CN_ArmInventoryHit(INVENTORY, MOUSE_WINDOW_X, MOUSE_WINDOW_Y, GUI_SCALE)) return;
+    _snapshot.client = _client;
     _snapshot.gesture = _right ? "shift_right" : "shift_left";
     _s.deposit_hit = _snapshot;
 }
@@ -105,7 +131,7 @@ function CN_NativeFinishDepositHit()
         return;
     }
     CN_ProbeLog("NETWORK QUICK DEPOSIT: " + _before.gesture + " slot=" + string(_x) + "," + string(_y) + " quantity=" + string(_entry.qty));
-    _s.pending_deposit = { anchor: _s.anchor.uid, entry: _entry };
+    _s.pending_deposit = { anchor: _s.anchor.uid, entry: _entry, client: _before.client };
 }
 
 function CN_NativeInventoryRemainder(_before, _hover_item)
@@ -172,6 +198,11 @@ function CN_NativeRunDeposit()
     var _request = _s.pending_deposit;
     _s.pending_deposit = undefined;
     if (is_undefined(_s.anchor) || _s.anchor.uid != _request.anchor) return;
+    if (_request.client)
+    {
+        if (!CN_NativeCall("net_is_host", [])) CN_ClientQuickMove(_s, _request.entry, true);
+        return;
+    }
     var _result = CN_DepositInventoryAcrossNetwork(_s.anchor, _request.entry);
     CN_ProbeLog("NETWORK DEPOSIT RESULT: " + json_stringify(_result));
     _s.notice = (_result.moved > 0) ? "Перенесено: " + string(_result.moved) : "Нет места или перенос недоступен";

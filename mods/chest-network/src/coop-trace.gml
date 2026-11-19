@@ -189,7 +189,7 @@ OnModLoad(function()
         var _second = CN_DLLCommand({op: "observe_coop", sample: _fixture});
         CN_DLLCommand({op: "reset_coop_trace"});
         if (_first != 1 || _second != 0) throw "Coop observation self-check failed";
-        var _ready = {event: "ready", version: "0.0.40",
+        var _ready = {event: "ready", version: "0.0.42",
                       instance_lookup: variable_global_exists("find_player_instance_by_netid"),
                       record_lookup: variable_global_exists("find_player_by_netid")};
         var _line = json_stringify(_ready);

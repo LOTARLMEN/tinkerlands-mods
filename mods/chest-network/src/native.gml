@@ -27,17 +27,19 @@ function CN_ContainerQuantity(_container, _item_id)
     if (!Container.Exists(_container)) return 0;
     var _seen = {};
     var _total = 0;
-    for (var _y = 0; _y < Container.GetHeight(_container); _y++)
+    var _width = Container.GetWidth(_container);
+    var _height = Container.GetHeight(_container);
+    for (var _y = 0; _y < _height; _y++)
     {
-        for (var _x = 0; _x < Container.GetWidth(_container); _x++)
+        for (var _x = 0; _x < _width; _x++)
         {
             var _item = Container.GetItem(_container, _x, _y);
             var _quantity = CN_ReadItemQuantity(_item);
-            if (_quantity <= 0) continue;
+            if (_quantity <= 0 || Item.GetProperty(_item, 0) != _item_id) continue;
             var _key = string(_item);
             if (variable_struct_exists(_seen, _key)) continue;
             variable_struct_set(_seen, _key, true);
-            if (Item.GetProperty(_item, 0) == _item_id) _total += _quantity;
+            _total += _quantity;
         }
     }
     return _total;
